@@ -62,6 +62,8 @@ package GPIO is
 
    procedure Set_Value (gpio  : GPIO_Type;
                         value : GPIO_Value);
+   procedure Set_Value (gpio  : GPIO_Type;
+                        value : Boolean);
 
    function Get_Value (gpio : GPIO_Type) return GPIO_Value;
 

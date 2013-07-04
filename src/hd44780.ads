@@ -13,6 +13,7 @@
 
 with GPIO;
 with Ada.Finalization;
+with Interfaces;
 
 package HD44780 is
    type Pin_Type is (
@@ -23,14 +24,13 @@ package HD44780 is
                     );
 
    type HD44780_Pin_Layout_Type is array(Pin_Type) of Natural;
+   type Screen_Height_Range is new Natural range 1..2;
+   type Screen_Width_Range  is new Natural range 1..16;
 
+   procedure Init(Layout : HD44780_Pin_Layout_Type);
    -- Initialize the screen.
    -- In the layout, each value must be a valid GPIO_Id. The corresponding
    -- pin must be mapped to the corresponding pin on the controller
-   procedure Init(Layout : HD44780_Pin_Layout_Type);
-
-   type Screen_Height_Range is new Natural range 1..2;
-   type Screen_Width_Range  is new Natural range 1..16;
 
    procedure Put(Line : Screen_Height_Range;
                  Row  : Screen_Width_Range;
@@ -43,16 +43,33 @@ package HD44780 is
    -- Print a message on the line, starting at the desired line
 
    procedure Clear;
+   -- remove all chars from the screen
 
 private
-
    type HD44780_Pin_Mapping_Type is array(Pin_Type) of GPIO.GPIO_Type;
-   type Data_Trame_Type is array (D4..D7) of GPIO.GPIO_Value;
-   type Int8_Rep is array (0..7) of GPIO.GPIO_Value;
-   type Int8 is range 0..255;
-   for Int8'Size use 8;
-   procedure ConvertInt8ToBites(val : Int8;
-                                Rep : out Int8_Rep);
+   type Int4 is mod 2**4;
+   type Int8 is mod 2**8;
+
+   protected type Semaphore(Init_Val : Natural) is
+      entry P;
+      procedure V;
+   private
+      Val : Natural := Init_Val;
+   end Semaphore;
+
+   -- To clear everithing at the end, use a controlled type which will be
+   -- reclamed when the package goes out of scope
+   type HD44780_Controller_Type is new Ada.Finalization.Limited_Controlled with
+      record
+         Sem     : Semaphore(0);
+         Mapping : HD44780_Pin_Mapping_Type;
+      end record;
+   overriding
+   procedure Finalize(obj : in out HD44780_Controller_Type);
+   Instance : HD44780_Controller_Type;
+
+   procedure Send_4Bits(Dat : Int4; Is_Data : Boolean);
+   procedure Send_8Bits(Dat : Int8; Is_Data : Boolean);
 
    type Char_Rep_Map is array (Character) of Int8;
    Char_Mapping : constant Char_Rep_Map :=
@@ -156,22 +173,5 @@ private
 
                    others => 16#20# -- unsupported chars are displayer widh ' '
                   );
-
-   protected type Semaphore(Init_Val : Natural) is
-      entry P;
-      procedure V;
-   private
-      Val : Natural := Init_Val;
-   end Semaphore;
-
-   type HD44780_Controller_Type is new Ada.Finalization.Limited_Controlled with
-      record
-         Sem     : Semaphore(0);
-         Mapping : HD44780_Pin_Mapping_Type;
-      end record;
-   overriding
-   procedure Finalize(obj : in out HD44780_Controller_Type);
-
-   Instance : HD44780_Controller_Type;
 
 end HD44780;

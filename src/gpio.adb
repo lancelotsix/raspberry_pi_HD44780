@@ -218,6 +218,11 @@ package body GPIO is
                               ASF.Trim (Integer'Image(GPIO_Value'Pos (value)),
                                         AS.Both));
    end Set_Value;
+   procedure Set_Value (gpio  : GPIO_Type;
+                        value : Boolean) is
+   begin
+      gpio.Set_Value(if value then High else Low);
+   end Set_Value;
 
    ----------------------------------------------------------------------------
    -- Get_Value

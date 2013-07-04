@@ -13,49 +13,8 @@
 --                                                                            --
 
 with GPIO; use GPIO;
-with Ada.Text_IO;
 
 package body HD44780 is
-
-   ----------------------------------------------------------------------------
-   --                               Helpers                                  --
-   ----------------------------------------------------------------------------
-   procedure Send_Data(Data_Trame : Data_Trame_Type; Char_Mde : Boolean) is
-      pragma Inline(Send_Data);
-   begin
-      -- This procedure is only called inside the module. The caller is in
-      -- charge of aquiring the semaphore, no check is done here!
-
-      -- Set RS
-      if Char_Mde then
-         Instance.Mapping(RS).Set_Value(High);
-      else
-         Instance.Mapping(RS).Set_Value(Low);
-      end if;
-
-      -- Set rw (write operation)
-      Instance.Mapping(RW).Set_Value(Low);
-      delay 4.0E-9;
-
-      -- RS and RW read on high front of D
-      Instance.Mapping(E).Set_Value(High);
-
-      -- Specify the data_trame
-      for i in D4..D7 loop
-         Instance.Mapping(i).Set_Value(Data_Trame(i));
-      end loop;
-
-      delay 80.0E-9;
-      Instance.Mapping(E).Set_Value(Low);
-
-      -- Reset everything
-      for i in Pin_Type'Range loop
-         Instance.Mapping(i).Set_Value(Low);
-      end loop;
-
-      delay 500.0E-9; -- 500 nano s before E can change
-   end Send_Data;
-
    ----------------------------------------------------------------------------
    --                   Implement the public interface                       --
    ----------------------------------------------------------------------------
@@ -69,150 +28,39 @@ package body HD44780 is
          Instance.Mapping(i).Set_Direction(gpio_out);
       end loop;
 
-      -- one
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => High,
-                                   D4 => High),
-                Char_Mde => False);
-      delay 4.1E-3;
-
-      -- two
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => High,
-                                   D4 => High),
-                Char_Mde => False);
-      delay 100.0E-6;
-
-      -- three
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => High,
-                                   D4 => High),
-                Char_Mde => False);
-
-      -- Set 4 bits mode
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => High,
-                                   D4 => Low),
-                Char_Mde => False);
-
-      -- chars are 5x8 pixels
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => High,
-                                   D4 => Low),
-                Char_Mde => False);
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => High,
-                                   D6 => Low,
-                                   D5 => Low,
-                                   D4 => Low),
-                Char_Mde => False);
-
-      -- set cursor blinking
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => Low,
-                                   D4 => Low),
-                Char_Mde => False);
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => High,
-                                   D6 => High,
-                                   D5 => Low,
-                                   D4 => Low),
-                Char_Mde => False);
-
-      -- Clear display
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => Low,
-                                   D4 => Low),
-                Char_Mde => False);
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => Low,
-                                   D4 => High),
-                Char_Mde => False);
-
-      -- Set cursor at home (first char of first line)
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => Low,
-                                   D4 => Low),
-                Char_Mde => False);
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => High,
-                                   D4 => Low),
-                Char_Mde => False);
-
+      Send_4Bits(2#0011#, False); delay 4.1E-3;   -- one
+      Send_4Bits(2#0011#, False); delay 100.0E-6; -- two
+      Send_4Bits(2#0011#, False);                 -- three
+      Send_4Bits(2#0010#, False);                 -- Set 4 bits mode
+      Send_8Bits(2#0010_1000#, False);            -- chars are 5x8 pixels
+      Send_8Bits(2#0000_1100#, False);            -- set Invisible cursor
+      Send_8Bits(2#0000_0001#, False);            -- Clear display
+      Send_8Bits(2#0000_0010#, False);            -- Set cursor at home
       Instance.Sem.V;
    end Init;
+
+   ----------------------------------------------------------------------------
+   -- Address_For_Cursor
+   function Address_For_Cursor (Line : Screen_Height_Range;
+                                Row  : Screen_Width_Range) return Int8 is
+   begin
+      -- Set DDRAM address (where the char will be written)
+      -- 16#00# is the first char of the first line
+      -- 16#40# is the first of the second line
+      return (if Line = 1 then 16#00# else 16#40#) + Int8(Row)  - 1;
+   end Address_For_Cursor;
 
    ----------------------------------------------------------------------------
    -- Put
    procedure Put(Line : Screen_Height_Range;
                  Row  : Screen_Width_Range;
                  Char : Character) is
-      add       : Int8;
-      rep_add   : Int8_Rep := (others=> Low);
-      rep_val   : Int8_Rep := (others=> Low);
    begin
-      if Line = 1 then
-         add := 16#00#;
-      else
-         add := 16#40#;
-      end if;
-      add := add + Int8(Row) - 1;
-      ConvertInt8ToBites(add, rep_add);
-      ConvertInt8ToBites(Char_Mapping(Char), rep_val);
-
-      -- Critical section for concurency
       Instance.Sem.P;
-
-      -- Set DDRAM address (where the char will be written)
-      -- 16#00# is the first char of the first line
-      -- 16#40# is the first of the second line
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => High,
-                                   D6 => rep_add(6),
-                                   D5 => rep_add(5),
-                                   D4 => rep_add(4)),
-                Char_Mde => False);
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => rep_add(3),
-                                   D6 => rep_add(2),
-                                   D5 => rep_add(1),
-                                   D4 => rep_add(0)),
-                Char_Mde => False);
-
-      -- Send the code of the first char. 4 most significant bits first
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => rep_val(7),
-                                   D6 => rep_val(6),
-                                   D5 => rep_val(5),
-                                   D4 => rep_val(4)),
-                Char_Mde => True);
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => rep_val(3),
-                                   D6 => rep_val(2),
-                                   D5 => rep_val(1),
-                                   D4 => rep_val(0)),
-                Char_Mde => True);
-
+      -- To set the cursor, send a command with msb at 1 and the 7 lsb
+      -- representing the address
+      Send_8Bits(Address_For_Cursor(Line, Row) or 2#1000_0000#, False);
+      Send_8Bits(Char_Mapping(Char), True);
       Instance.Sem.V;
    end Put;
 
@@ -221,14 +69,17 @@ package body HD44780 is
    procedure Put(Line      : Screen_Height_Range;
                  Start_Row : Screen_Width_Range;
                  Msg       : String) is
-      Idx : Natural := Natural(Start_Row);
    begin
-      while Idx <= Natural(Screen_Width_Range'Last) and
-        (Idx+Msg'First-1 <= Msg'Last) loop
-         Put(Line, Screen_Width_Range(Idx), Msg(Idx+Msg'First-1));
-         Idx := Idx + 1;
+      Instance.Sem.P;
+      -- Place the cursor;
+      Send_8Bits(Address_For_Cursor(Line, Start_Row) or 2#1000_0000#, False);
+
+      for i in Msg'First .. Natural'Min(Msg'Last,
+                                        Msg'First + 17-Natural(Start_Row)) loop
+         Send_8Bits(Char_Mapping(Msg(i)), True);
       end loop;
 
+      Instance.Sem.V;
    end Put;
 
    ----------------------------------------------------------------------------
@@ -236,24 +87,14 @@ package body HD44780 is
    procedure Clear is
    begin
       Instance.Sem.P;
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => Low,
-                                   D4 => Low),
-                Char_Mde => False);
-      Send_Data(Data_Trame =>
-                  Data_Trame_Type'(D7 => Low,
-                                   D6 => Low,
-                                   D5 => Low,
-                                   D4 => High),
-                Char_Mde => False);
+      Send_8Bits(2#0000_0001#, False);
       Instance.Sem.V;
    end Clear;
 
    ----------------------------------------------------------------------------
    --               Private implementation for the package                   --
    ----------------------------------------------------------------------------
+
    protected body Semaphore is
 
       entry P when Val > 0 is
@@ -269,33 +110,45 @@ package body HD44780 is
    end Semaphore;
 
    ----------------------------------------------------------------------------
-   -- ConvertInt8ToBites
-   procedure ConvertInt8ToBites(val : Int8;
-                                Rep : out Int8_Rep) is
-      pragma Inline(ConvertInt8ToBites);
-      tmp : Int8 := val;
+   -- Send_4Bits
+   procedure Send_4Bits(Dat : Int4; Is_Data : Boolean) is
    begin
-      for i in 0..7 loop
-         if (tmp mod 2) = 1 then
-            Rep(i) := High;
-         else
-            Rep(i) := Low;
-         end if;
-         tmp := tmp / 2;
-      end loop;
-   end ConvertInt8ToBites;
+      -- Register Select; High (True) => Data; Low (False) => Non data
+      Instance.Mapping(RS).Set_Value(Is_Data);
+      -- We send data, read write bite must be low
+      Instance.Mapping(RW).Set_Value(Low);
+
+      Instance.Mapping(D4).Set_Value((Dat and 2#0001#) /= 0); -- lsb
+      Instance.Mapping(D5).Set_Value((Dat and 2#0010#) /= 0);
+      Instance.Mapping(D6).Set_Value((Dat and 2#0100#) /= 0);
+      Instance.Mapping(D7).Set_Value((Dat and 2#1000#) /= 0); -- msb
+
+      delay  40.0E-9;
+      Instance.Mapping(E).Set_Value(High);
+      delay 230.0E-9;
+      Instance.Mapping(E).Set_Value(Low);
+      delay 230.0E-9; -- to make sure that at least 500ns elaps before another
+                      -- command
+   end Send_4Bits;
+
+   ----------------------------------------------------------------------------
+   -- Send_8Bits
+   procedure Send_8Bits(Dat : Int8; Is_Data : Boolean) is
+   begin
+      -- Need to send the data into two parts: first the most significant bits
+      Send_4Bits(Int4(Dat / 16), Is_Data);
+      Send_4Bits(Int4(Dat mod 16), Is_Data);
+   end Send_8Bits;
 
    ----------------------------------------------------------------------------
    -- Finalize
    procedure Finalize(obj : in out HD44780_Controller_Type) is
    begin
-      Clear;
-
+      Clear; -- Remove all text present on the screen
       obj.Sem.P;
       for i in obj.Mapping'Range loop
          obj.Mapping(i).Un_Export;
       end loop;
-
       -- Since no one should be able to use the obj anymore, do not release
       -- the semaphore (which will not exist anymore anyway)
    end Finalize;
