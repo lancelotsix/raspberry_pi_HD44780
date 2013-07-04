@@ -53,6 +53,8 @@ private
    protected type Semaphore(Init_Val : Natural) is
       entry P;
       procedure V;
+      procedure Lock; -- locks the semaphore so no one can take it
+                      -- (sets the permit count to 0)
    private
       Val : Natural := Init_Val;
    end Semaphore;
@@ -61,8 +63,8 @@ private
    -- reclamed when the package goes out of scope
    type HD44780_Controller_Type is new Ada.Finalization.Limited_Controlled with
       record
-         Sem     : Semaphore(0);
-         Mapping : HD44780_Pin_Mapping_Type;
+         Sem                  : Semaphore(0);
+         Mapping              : HD44780_Pin_Mapping_Type;
       end record;
    overriding
    procedure Finalize(obj : in out HD44780_Controller_Type);

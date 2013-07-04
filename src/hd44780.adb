@@ -107,6 +107,12 @@ package body HD44780 is
          Val := Val + 1;
       end V;
 
+      procedure Lock is
+      begin
+         Val := 0;
+      end Lock;
+
+
    end Semaphore;
 
    ----------------------------------------------------------------------------
@@ -144,10 +150,14 @@ package body HD44780 is
    -- Finalize
    procedure Finalize(obj : in out HD44780_Controller_Type) is
    begin
-      Clear; -- Remove all text present on the screen
-      obj.Sem.P;
+      obj.Sem.Lock; -- If an exception is raised during initialisation, or
+                    -- if the module is not properly initialized, the semaphore
+                    -- cannot be obtained. Thus we do not care about the number
+                    -- of availalble permits.
       for i in obj.Mapping'Range loop
-         obj.Mapping(i).Un_Export;
+         if obj.Mapping(i).Is_Exported then
+            obj.Mapping(i).Un_Export;
+         end if;
       end loop;
       -- Since no one should be able to use the obj anymore, do not release
       -- the semaphore (which will not exist anymore anyway)
