@@ -221,7 +221,7 @@ package body GPIO is
    procedure Set_Value (gpio  : GPIO_Type;
                         value : Boolean) is
    begin
-      gpio.Set_Value(if value then High else Low);
+      gpio.Set_Value(GPIO_Value'Val(Boolean'Pos(value)));
    end Set_Value;
 
    ----------------------------------------------------------------------------

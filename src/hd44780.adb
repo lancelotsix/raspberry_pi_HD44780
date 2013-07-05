@@ -47,7 +47,11 @@ package body HD44780 is
       -- Set DDRAM address (where the char will be written)
       -- 16#00# is the first char of the first line
       -- 16#40# is the first of the second line
-      return (if Line = 1 then 16#00# else 16#40#) + Int8(Row)  - 1;
+      if Line = 1 then
+         return 16#00# + Int8(Row) - 1;
+      else
+         return 16#40# + Int8(Row)  - 1;
+      end if;
    end Address_For_Cursor;
 
    ----------------------------------------------------------------------------

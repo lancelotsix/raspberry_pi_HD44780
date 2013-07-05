@@ -8,12 +8,16 @@ project Pi_HD44780_Driver is
 
    package Compiler is
       for Default_Switches ("c") use ("-g");
-      for Default_Switches ("ada") use ("-g", "-gnat12");
+      for Default_Switches ("ada") use ("-gnatf", "-gnat05", "-O3");
    end Compiler;
 
    package Linker is
       for Default_Switches ("c") use ("-g");
    end Linker;
+
+   package Builder is
+      for Default_Switches ("ada") use ("-s");
+   end Builder;
 
 end Pi_HD44780_Driver;
 
